@@ -84,10 +84,18 @@ const createSocketChannel = socket => eventChannel((emit) => {
   const handler = (data) => {
     emit(data);
   };
+  const errorHandler = (error) => {
+    emit(new Error(error));
+  };
+
   socket.on('newTask', handler);
-  return () => {
+  socket.on('error', errorHandler);
+
+  const unsubscribe = () => {
     socket.off('newTask', handler);
   };
+
+  return unsubscribe;
 });
 
 // connection monitoring sagas
