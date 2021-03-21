@@ -1,6 +1,6 @@
 import React from 'react';
 import {connect} from 'react-redux';
-import {topTaskSelector} from '../modules/task';
+import {topTaskSelector, itemQueue } from '../modules/task';
 
 const TaskList = (props) => {
   const {serverStatus, channelStatus} = props;
@@ -9,6 +9,7 @@ const TaskList = (props) => {
   const channelStatusColor = channelStatus === 'on' ? 'green' : 'red';
 
   const taskList = props.tasks.map(task => <li key={task.taskID}>{task.taskName}</li>);
+
   return (
     <div style={{display: 'flex', width: '400px', justifyContent: 'space-between', borderTop: '1px solid grey'}}>
       <div style={{width: '200px'}}>
@@ -28,6 +29,7 @@ const TaskList = (props) => {
 
 const mapStateToProps = state => ({
   tasks: topTaskSelector(state),
+  queue: itemQueue(state),
   serverStatus: state.taskReducer.serverStatus,
   channelStatus: state.taskReducer.channelStatus,
 });
