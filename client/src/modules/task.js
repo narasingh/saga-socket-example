@@ -1,8 +1,9 @@
-import io from 'socket.io-client';
+/* eslint-disable no-param-reassign */
 import {eventChannel, delay} from 'redux-saga';
 import {take, call, put, fork, race, cancelled, select } from 'redux-saga/effects';
 import {createSelector} from 'reselect';
 import { clone, reject } from 'lodash';
+
 
 const ADD_TASK = 'ADD_TASK';
 const START_CHANNEL = 'START_CHANNEL';
@@ -15,8 +16,13 @@ const ELEMENT_ENQUEUE = 'ELEMENT_ENQUEUE';
 // const ELEMENT_PICK = 'ELEMENT_PICK';
 const ELEMENT_DEQUEUE = 'ELEMENT_DEQUEUE';
 
+const socketServerURL = 'ws://localhost:3000';
+const socket = new WebSocket(socketServerURL);
+let isConnectionOpened = false;
 
-const socketServerURL = 'http://localhost:3000';
+socket.onopen = () => {
+  isConnectionOpened = true;
+};
 
 const initialState = {
   taskList: [],
@@ -77,52 +83,39 @@ export const itemQueue = createSelector(processQueue, queue => queue);
 export const pickQueue = createSelector(itemQueue, queue => (queue.length ? queue[0] : undefined));
 
 // wrapping functions for socket events (connect, disconnect, reconnect)
-let socket;
-const connect = () => {
-  socket = io(socketServerURL);
-  return new Promise((resolve) => {
-    socket.on('connect', () => {
-      resolve(socket);
-    });
-  });
-};
+const connect = () => new Promise((resolve) => {
+  if (isConnectionOpened) {
+    resolve(socket);
+  }
+});
 
-const disconnect = () => {
-  socket = io(socketServerURL);
-  return new Promise((resolve) => {
-    socket.on('disconnect', () => {
-      resolve(socket);
-    });
-  });
-};
-
-const reconnect = () => {
-  socket = io(socketServerURL);
-  return new Promise((resolve) => {
-    socket.on('reconnect', () => {
-      resolve(socket);
-    });
-  });
-};
+const disconnect = () => new Promise((resolve) => {
+  socket.close = () => {
+    resolve(socket);
+  };
+});
 
 // This is how channel is created
-const createSocketChannel = socket => eventChannel((emit) => {
-  const handler = (data) => {
-    emit(data);
-  };
-  const handleInsert = (data) => {
+const createSocketChannel = (socket = {}) => eventChannel((emit) => {
+  const handleInsert = (event) => {
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch (e) {
+      // eslint-disable-next-line prefer-destructuring
+      data = event.data;
+    }
     emit(data);
   };
   const errorHandler = (error) => {
     emit(new Error(error));
   };
 
-  socket.on('newTask', handler);
-  socket.on('insertCash', handleInsert);
-  socket.on('error', errorHandler);
+  socket.onmessage = handleInsert;
+  socket.onerror = errorHandler;
 
   const unsubscribe = () => {
-    socket.off('newTask', handler);
+    socket.close = handleInsert;
   };
 
   return unsubscribe;
@@ -133,13 +126,6 @@ const listenDisconnectSaga = function* () {
   while (true) {
     yield call(disconnect);
     yield put({type: SERVER_OFF});
-  }
-};
-
-const listenConnectSaga = function* () {
-  while (true) {
-    yield call(reconnect);
-    yield put({type: SERVER_ON});
   }
 };
 
@@ -178,16 +164,15 @@ const listenServerSaga = function* () {
     yield put({type: CHANNEL_ON});
     const {timeout} = yield race({
       connected: call(connect),
-      timeout: delay(2000),
+      timeout: delay(60 * 60 * 12),
     });
     if (timeout) {
-      yield put({type: SERVER_OFF});
+      // yield put({type: SERVER_OFF});
+      console.log('timed out!!');
     }
     const socket = yield call(connect);
     const socketChannel = yield call(createSocketChannel, socket);
     yield fork(listenDisconnectSaga);
-    yield fork(listenConnectSaga);
-    yield put({type: SERVER_ON});
 
     while (true) {
       const payload = yield take(socketChannel);
@@ -202,7 +187,6 @@ const listenServerSaga = function* () {
     console.log(error);
   } finally {
     if (yield cancelled()) {
-      socket.disconnect(true);
       yield put({type: CHANNEL_OFF});
     }
   }
