@@ -3,7 +3,7 @@ import {eventChannel, delay} from 'redux-saga';
 import {take, call, put, fork, race, cancelled, select } from 'redux-saga/effects';
 import {createSelector} from 'reselect';
 import { clone, reject } from 'lodash';
-
+import WebSocketReconnector from 'reconnecting-websocket';
 
 const ADD_TASK = 'ADD_TASK';
 const START_CHANNEL = 'START_CHANNEL';
@@ -17,12 +17,7 @@ const ELEMENT_ENQUEUE = 'ELEMENT_ENQUEUE';
 const ELEMENT_DEQUEUE = 'ELEMENT_DEQUEUE';
 
 const socketServerURL = 'ws://localhost:3000';
-const socket = new WebSocket(socketServerURL);
-let isConnectionOpened = false;
-
-socket.onopen = () => {
-  isConnectionOpened = true;
-};
+let socket;
 
 const initialState = {
   taskList: [],
@@ -84,13 +79,18 @@ export const pickQueue = createSelector(itemQueue, queue => (queue.length ? queu
 
 // wrapping functions for socket events (connect, disconnect, reconnect)
 const connect = () => new Promise((resolve) => {
-  if (isConnectionOpened) {
+  socket = new WebSocketReconnector(socketServerURL);
+  socket.reconnectInterval = 200;
+  socket.maxReconnectAttempts = 2;
+  socket.onopen = () => {
+    console.log('connection open!!');
     resolve(socket);
-  }
+  };
 });
 
 const disconnect = () => new Promise((resolve) => {
-  socket.close = () => {
+  socket.onerror = () => {
+    console.log('connection lost!');
     resolve(socket);
   };
 });
@@ -107,15 +107,15 @@ const createSocketChannel = (socket = {}) => eventChannel((emit) => {
     }
     emit(data);
   };
-  const errorHandler = (error) => {
-    emit(new Error(error));
+  const errorHandler = () => {
+    console.log('reconnect!');
   };
 
   socket.onmessage = handleInsert;
   socket.onerror = errorHandler;
 
   const unsubscribe = () => {
-    socket.close = handleInsert;
+    socket.close = null;
   };
 
   return unsubscribe;
@@ -150,8 +150,6 @@ export const processRequestQueue = function* (payload) {
     if (response) {
       yield put({ type: ELEMENT_DEQUEUE });
       const queue = yield select(itemQueue);
-      console.log(response);
-      console.log(queue);
     }
   } catch (error) {
     console.log(error);
@@ -161,15 +159,15 @@ export const processRequestQueue = function* (payload) {
 // Saga to switch on channel.
 const listenServerSaga = function* () {
   try {
-    yield put({type: CHANNEL_ON});
-    const {timeout} = yield race({
-      connected: call(connect),
-      timeout: delay(60 * 60 * 12),
-    });
-    if (timeout) {
-      // yield put({type: SERVER_OFF});
-      console.log('timed out!!');
-    }
+    // yield put({type: CHANNEL_ON});
+    // const {timeout} = yield race({
+    //   connected: call(connect),
+    //   timeout: delay(60 * 60 * 12),
+    // });
+    // if (timeout) {
+    //   // yield put({type: SERVER_OFF});
+    //   console.log('timed out!!');
+    // }
     const socket = yield call(connect);
     const socketChannel = yield call(createSocketChannel, socket);
     yield fork(listenDisconnectSaga);

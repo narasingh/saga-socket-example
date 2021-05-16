@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "websocket-reconnector": "^1.1.1"
+  }
+}
