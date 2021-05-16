@@ -83,8 +83,6 @@ const connect = () => new Promise((resolve) => {
     maxRetries: 5,
     minReconnectionDelay: 3000,
   });
-  socket.reconnectInterval = 200;
-  socket.maxReconnectAttempts = 2;
   socket.onopen = () => {
     console.log('connection open!!');
     resolve(socket);
