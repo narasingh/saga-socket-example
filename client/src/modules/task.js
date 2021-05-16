@@ -79,7 +79,10 @@ export const pickQueue = createSelector(itemQueue, queue => (queue.length ? queu
 
 // wrapping functions for socket events (connect, disconnect, reconnect)
 const connect = () => new Promise((resolve) => {
-  socket = new WebSocketReconnector(socketServerURL);
+  socket = new WebSocketReconnector(socketServerURL, [], {
+    maxRetries: 5,
+    minReconnectionDelay: 3000,
+  });
   socket.reconnectInterval = 200;
   socket.maxReconnectAttempts = 2;
   socket.onopen = () => {
