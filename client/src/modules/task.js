@@ -2,7 +2,7 @@
 import {eventChannel, delay} from 'redux-saga';
 import {take, call, put, fork, race, cancelled, select } from 'redux-saga/effects';
 import {createSelector} from 'reselect';
-import { clone, reject } from 'lodash';
+import { clone } from 'lodash';
 import WebSocketReconnector from 'reconnecting-websocket';
 
 const ADD_TASK = 'ADD_TASK';
@@ -85,13 +85,18 @@ const connect = () => new Promise((resolve) => {
   });
   socket.onopen = () => {
     console.log('connection open!!');
+    socket.send('Hello Server!');
     resolve(socket);
   };
 });
 
 const disconnect = () => new Promise((resolve) => {
-  socket.onerror = () => {
-    console.log('connection lost!');
+  socket.onclose = () => {
+    console.log('connection closed!!');
+  };
+
+  socket.onerror = (evt) => {
+    console.log('connection lost!', evt);
     resolve(socket);
   };
 });
@@ -108,15 +113,11 @@ const createSocketChannel = (socket = {}) => eventChannel((emit) => {
     }
     emit(data);
   };
-  const errorHandler = () => {
-    console.log('reconnect!');
-  };
 
   socket.onmessage = handleInsert;
-  socket.onerror = errorHandler;
 
   const unsubscribe = () => {
-    socket.close = null;
+    socket.close = handleInsert;
   };
 
   return unsubscribe;
@@ -160,15 +161,15 @@ export const processRequestQueue = function* (payload) {
 // Saga to switch on channel.
 const listenServerSaga = function* () {
   try {
-    // yield put({type: CHANNEL_ON});
-    // const {timeout} = yield race({
-    //   connected: call(connect),
-    //   timeout: delay(60 * 60 * 12),
-    // });
-    // if (timeout) {
-    //   // yield put({type: SERVER_OFF});
-    //   console.log('timed out!!');
-    // }
+    yield put({type: CHANNEL_ON});
+    const {timeout} = yield race({
+      connected: call(connect),
+      timeout: delay(10000),
+    });
+    if (timeout) {
+      // yield put({type: SERVER_OFF});
+      console.log('timed out!!');
+    }
     const socket = yield call(connect);
     const socketChannel = yield call(createSocketChannel, socket);
     yield fork(listenDisconnectSaga);
@@ -186,6 +187,7 @@ const listenServerSaga = function* () {
     console.log(error);
   } finally {
     if (yield cancelled()) {
+      socket.close();
       yield put({type: CHANNEL_OFF});
     }
   }
